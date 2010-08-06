@@ -31,11 +31,16 @@ class ExceptionNotifier
       end
     end
 
+    class MissingController
+      def method_missing(*args, &block)
+      end
+    end
+
     def exception_notification(env, exception)
       @env        = env
       @exception  = exception
       @options    = (env['exception_notifier.options'] || {}).reverse_merge(self.class.default_options)
-      @controller = env['action_controller.instance']
+      @controller = env['action_controller.instance'] || MissingController.new
       @request    = ActionDispatch::Request.new(env)
       @backtrace  = clean_backtrace(exception)
       @sections   = @options[:sections]
@@ -48,17 +53,32 @@ class ExceptionNotifier
       @action = @controller ? "#{@controller.controller_name}##{@controller.action_name}" : "middleware"
       prefix   = "#{@options[:email_prefix]}#{@action}"
       subject  = "#{prefix} (#{@exception.class}) #{@exception.message.inspect}"
-      
+
       mail(:to => @options[:exception_recipients], :from => @options[:sender_address], :subject => subject) do |format|
         format.text { render "#{mailer_name}/exception_notification" }
       end
     end
 
     private
+      
       def clean_backtrace(exception)
         Rails.respond_to?(:backtrace_cleaner) ?
           Rails.backtrace_cleaner.send(:filter, exception.backtrace) :
           exception.backtrace
       end
+      
+      helper_method :inspect_object
+      
+      def inspect_object(object)
+        case object
+        when Hash, Array
+          object.inspect
+        when ActionController::Base
+          "#{object.controller_name}##{object.action_name}"
+        else
+          object.to_s
+        end
+      end
+      
   end
 end
